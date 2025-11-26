@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ruleta Wavelength Digital</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+
+        body { font-family: 'Inter', sans-serif; }
+
+        /* Contenedor Principal de la Ruleta */
+        .device-container {
+            width: 400px;
+            height: 400px; 
+            position: relative;
+            border-radius: 50%;
+            overflow: hidden; 
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+            background-color: #e5e7eb; 
+        }
+
+        /* CAPA 1: El Disco de Puntuación (GIRA con SPIN) */
+        .scoring-disc {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-color: #22c55e; /* Fondo VERDE */
+            transition: transform 1.5s cubic-bezier(0.25, 1, 0.5, 1); /* Giro suave */
+            z-index: 10;
+        }
+
+        /* El gradiente se manejará via JS para la dificultad, pero dejamos un fallback */
+        .scoring-sectors {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            /* El background se inyecta desde JS */
+        }
+
+        /* CAPA 2: La Pantalla/Tapa (OCULTA PUNTUACIÓN) */
+        .screen-cover {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 50%; /* Ocupa mitad superior */
+            background-color: #e5e7eb; /* Gris claro sólido */
+            border-bottom: 2px solid #d1d5db;
+            z-index: 20;
+            
+            transform-origin: bottom center; 
+            transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .screen-closed {
+            transform: rotate(0deg); 
+        }
+
+        .screen-open {
+            transform: rotate(180deg); 
+        }
+        
+        .screen-pattern {
+            width: 100%;
+            height: 100%;
+            opacity: 0.2;
+            background-image: radial-gradient(#6b7280 1.5px, transparent 1.5px);
+            background-size: 12px 12px;
+        }
+
+        /* CAPA 3: La Aguja */
+        .needle-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; 
+            z-index: 30; 
+        }
+
+        .needle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 180px; 
+            height: 6px;
+            background-color: #dc2626; 
+            transform-origin: center left; 
+            margin-top: -3px; 
+            border-radius: 0 4px 4px 0;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+            transition: transform 0.1s linear;
+        }
+        
+        .needle-hub {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 40px;
+            height: 40px;
+            background-color: #b91c1c;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 31;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        /* CAPA 4: Carcasa Azul Estática */
+        .static-housing {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 50%;
+            background-color: #1e3a8a; 
+            z-index: 40; 
+            border-top: 8px solid #bfdbfe; 
+            box-shadow: inset 0 10px 20px rgba(0,0,0,0.3);
+        }
+
+        /* Estilos de controles */
+        input[type=range] {
+            -webkit-appearance: none; 
+            background: transparent; 
+        }
+        
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 24px;
+            width: 24px;
+            border-radius: 50%;
+            background: #dc2626;
+            cursor: pointer;
+            margin-top: -10px; 
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #cbd5e1;
+            border-radius: 2px;
+        }
+
+    </style>
+</head>
+<body class="bg-gray-50 flex flex-col items-center justify-center min-h-screen p-6">
+
+    <div class="max-w-4xl w-full flex flex-col items-center gap-8">
+        
+        <!-- Header -->
+        <div class="text-center">
+            <h1 class="text-4xl font-black text-gray-800 tracking-tight mb-2">WAVELENGTH</h1>
+            <p class="text-gray-500">Sincroniza tus pensamientos</p>
+        </div>
+
+        <!-- Dispositivo Principal -->
+        <div class="relative">
+            <div class="device-container">
+                
+                <!-- 1. Disco de Puntuación (Verde + Zonas Dinámicas) -->
+                <div id="scoringDisc" class="scoring-disc">
+                    <div id="scoringSectors" class="scoring-sectors"></div>
+                </div>
+
+                <!-- 2. Pantalla/Tapa -->
+                <div id="screenCover" class="screen-cover screen-closed">
+                    <div class="screen-pattern"></div>
+                </div>
+
+                <!-- 3. Aguja -->
+                <div class="needle-container">
+                    <div id="needleWrapper" style="position: absolute; top: 50%; left: 50%; width: 0; height: 0;">
+                        <div class="needle" style="left: 0; top: 0; margin-top: -3px;"></div>
+                    </div>
+                    <div class="needle-hub"></div>
+                </div>
+
+                <!-- 4. Carcasa Inferior -->
+                <div class="static-housing flex items-center justify-center"></div>
+
+            </div>
+            
+            <!-- Decoración lateral -->
+            <div class="absolute -left-4 top-1/2 w-4 h-32 bg-gray-300 rounded-l-lg -translate-y-1/2 -z-10"></div>
+            <div class="absolute -right-4 top-1/2 w-4 h-32 bg-gray-300 rounded-r-lg -translate-y-1/2 -z-10"></div>
+        </div>
+
+        <!-- Controles -->
+        <div class="w-full max-w-lg bg-white p-6 rounded-2xl shadow-xl border border-gray-100 flex flex-col gap-6">
+            
+            <!-- Barra de Ángulo y Botones Finos -->
+            <div class="flex items-center gap-4">
+                <button id="btnMinus" class="flex-none w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold flex items-center justify-center transition active:scale-95 shadow-sm border border-gray-200" title="-1 Grado">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                </button>
+
+                <div class="flex-1 relative pt-1">
+                    <div class="flex justify-between text-xs text-gray-400 font-bold mb-2 uppercase tracking-wider">
+                        <span>Izquierda</span>
+                        <span id="angleValueDisplay" class="text-blue-600">90°</span>
+                        <span>Derecha</span>
+                    </div>
+                    <input type="range" id="angleSlider" min="0" max="180" value="90" class="w-full">
+                </div>
+
+                <button id="btnPlus" class="flex-none w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold flex items-center justify-center transition active:scale-95 shadow-sm border border-gray-200" title="+1 Grado">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="h-px bg-gray-100 w-full"></div>
+
+            <!-- Botones de Acción Principal -->
+            <div class="grid grid-cols-2 gap-4">
+                <button id="btnSpin" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:shadow-indigo-200 transition-all active:translate-y-1 flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    GIRAR RULETA
+                </button>
+
+                <button id="btnToggleCover" class="bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:shadow-gray-300 transition-all active:translate-y-1 flex items-center justify-center gap-2">
+                    <svg id="iconEye" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    <span id="txtCover">DESTAPAR</span>
+                </button>
+            </div>
+
+            <!-- Control de Dificultad -->
+            <div class="mt-2 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <div class="flex flex-col items-center gap-3">
+                    <span class="text-sm font-bold text-gray-500 uppercase tracking-widest">Cambiar Dificultad</span>
+                    <div class="flex items-center gap-6">
+                        <button id="btnDiffLess" class="w-10 h-10 rounded-full bg-white border-2 border-gray-300 text-gray-600 font-bold hover:border-red-400 hover:text-red-500 hover:bg-red-50 transition shadow-sm flex items-center justify-center text-xl">
+                            -
+                        </button>
+                        
+                        <div class="text-center w-24">
+                            <span id="diffValueDisplay" class="text-xl font-bold text-gray-800 block">7.2°</span>
+                            <span class="text-[10px] text-gray-400">Ancho Zona</span>
+                        </div>
+
+                        <button id="btnDiffMore" class="w-10 h-10 rounded-full bg-white border-2 border-gray-300 text-gray-600 font-bold hover:border-green-400 hover:text-green-500 hover:bg-green-50 transition shadow-sm flex items-center justify-center text-xl">
+                            +
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Elementos DOM
+        const angleSlider = document.getElementById('angleSlider');
+        const needleWrapper = document.getElementById('needleWrapper');
+        const scoringDisc = document.getElementById('scoringDisc');
+        const scoringSectors = document.getElementById('scoringSectors');
+        const screenCover = document.getElementById('screenCover');
+        const btnMinus = document.getElementById('btnMinus');
+        const btnPlus = document.getElementById('btnPlus');
+        const btnSpin = document.getElementById('btnSpin');
+        const btnToggleCover = document.getElementById('btnToggleCover');
+        const txtCover = document.getElementById('txtCover');
+        const angleValueDisplay = document.getElementById('angleValueDisplay');
+        const btnDiffLess = document.getElementById('btnDiffLess');
+        const btnDiffMore = document.getElementById('btnDiffMore');
+        const diffValueDisplay = document.getElementById('diffValueDisplay');
+
+        // Estado
+        let currentAngle = 90; 
+        let isCovered = true;
+        let discRotation = 0; 
+        let zoneWidth = 7.2; // Ancho base inicial en grados de cada franja
+
+        // --- FUNCIONES ---
+
+        // Generar el gradiente dinámico según la dificultad
+        function updateSectorsGradient() {
+            const w = zoneWidth;
+            const halfW = w / 2;
+            
+            // Calculamos los puntos de parada para el gradiente cónico
+            // ZONA SUPERIOR (Centrada en 0deg)
+            // Celeste (Centro): 360-halfW hasta 0+halfW (pero en CSS conic es 0 a ...)
+            // CSS conic empieza a las 12 en punto (0deg) y va horario.
+            
+            // Mitad Derecha (0 a ...)
+            const stopBlueR = halfW;
+            const stopRedR = halfW + w;
+            const stopYellowR = halfW + 2 * w;
+            
+            // ZONA INFERIOR (Centrada en 180deg)
+            // Empieza: 180 - (halfW + 2w)
+            const startLower = 180 - (halfW + 2 * w);
+            const stopYellowL_Start = startLower;
+            const stopRedL_Start = startLower + w;
+            const stopBlueL_Start = startLower + 2 * w; // Inicio del azul central abajo
+            // Azul central abajo va de (180-halfW) a (180+halfW)
+            const stopBlueL_End = 180 + halfW;
+            const stopRedL_End = 180 + halfW + w;
+            const stopYellowL_End = 180 + halfW + 2 * w;
+            
+            // Mitad Izquierda Superior (Cerrando el círculo hacia 360)
+            const startUpperLeft = 360 - (halfW + 2 * w);
+            const stopYellowUL_Start = startUpperLeft;
+            const stopRedUL_Start = 360 - (halfW + w);
+            const stopBlueUL_Start = 360 - halfW;
+
+            // Construcción del string del gradiente
+            const gradient = `conic-gradient(
+                #38bdf8 0deg ${stopBlueR}deg,
+                #f87171 ${stopBlueR}deg ${stopRedR}deg,
+                #facc15 ${stopRedR}deg ${stopYellowR}deg,
+                
+                transparent ${stopYellowR}deg ${startLower}deg,
+                
+                #facc15 ${stopYellowL_Start}deg ${stopRedL_Start}deg,
+                #f87171 ${stopRedL_Start}deg ${stopBlueL_Start}deg,
+                #38bdf8 ${stopBlueL_Start}deg ${stopBlueL_End}deg,
+                #f87171 ${stopBlueL_End}deg ${stopRedL_End}deg,
+                #facc15 ${stopRedL_End}deg ${stopYellowL_End}deg,
+                
+                transparent ${stopYellowL_End}deg ${startUpperLeft}deg,
+                
+                #facc15 ${stopYellowUL_Start}deg ${stopRedUL_Start}deg,
+                #f87171 ${stopRedUL_Start}deg ${stopBlueUL_Start}deg,
+                #38bdf8 ${stopBlueUL_Start}deg 360deg
+            )`;
+
+            scoringSectors.style.background = gradient;
+            diffValueDisplay.textContent = w.toFixed(1) + "°";
+        }
+
+        // Modificar Dificultad
+        function changeDifficulty(delta) {
+            let newWidth = zoneWidth + delta;
+            // Límites de seguridad (mínimo 2 grados, máximo 15 grados)
+            if (newWidth < 2) newWidth = 2;
+            if (newWidth > 15) newWidth = 15;
+            
+            zoneWidth = newWidth;
+            updateSectorsGradient();
+        }
+
+        // Actualizar la aguja
+        function updateNeedle(val) {
+            currentAngle = parseInt(val);
+            if (currentAngle < 0) currentAngle = 0;
+            if (currentAngle > 180) currentAngle = 180;
+            
+            angleSlider.value = currentAngle;
+            angleValueDisplay.textContent = currentAngle + "°";
+
+            const cssRotation = 180 + currentAngle; 
+            needleWrapper.style.transform = `rotate(${cssRotation}deg)`;
+        }
+
+        // Girar el disco
+        function spinDisc() {
+            const spins = 5 * 360; 
+            const randomDegree = Math.floor(Math.random() * 360);
+            discRotation += spins + randomDegree;
+            scoringDisc.style.transform = `rotate(${discRotation}deg)`;
+        }
+
+        // Tapar / Destapar
+        function toggleCover() {
+            isCovered = !isCovered;
+            if (isCovered) {
+                screenCover.classList.remove('screen-open');
+                screenCover.classList.add('screen-closed');
+                txtCover.textContent = "DESTAPAR";
+                document.getElementById('iconEye').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />';
+            } else {
+                screenCover.classList.remove('screen-closed');
+                screenCover.classList.add('screen-open');
+                txtCover.textContent = "TAPAR";
+                document.getElementById('iconEye').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />';
+            }
+        }
+
+        // --- EVENT LISTENERS ---
+
+        angleSlider.addEventListener('input', (e) => {
+            updateNeedle(e.target.value);
+        });
+
+        btnMinus.addEventListener('click', () => {
+            updateNeedle(currentAngle - 1);
+        });
+
+        btnPlus.addEventListener('click', () => {
+            updateNeedle(currentAngle + 1);
+        });
+
+        btnDiffLess.addEventListener('click', () => changeDifficulty(-1));
+        btnDiffMore.addEventListener('click', () => changeDifficulty(1));
+
+        btnSpin.addEventListener('click', spinDisc);
+        btnToggleCover.addEventListener('click', toggleCover);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') updateNeedle(currentAngle - 1);
+            if (e.key === 'ArrowRight') updateNeedle(currentAngle + 1);
+        });
+
+        window.onload = () => {
+            updateSectorsGradient(); // Generar gradiente inicial
+            updateNeedle(90); 
+            spinDisc(); 
+        };
+
+    </script>
+</body>
+</html>
